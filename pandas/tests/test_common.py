@@ -1,4 +1,5 @@
 import collections
+from distutils.version import LooseVersion
 from functools import partial
 import string
 
@@ -7,7 +8,8 @@ import pytest
 
 import pandas as pd
 from pandas import Series, Timestamp
-from pandas.core import common as com, ops
+from pandas.core import ops
+import pandas.core.common as com
 
 
 def test_get_callable_name():
@@ -117,3 +119,13 @@ def test_git_version():
     git_version = pd.__git_version__
     assert len(git_version) == 40
     assert all(c in string.hexdigits for c in git_version)
+
+
+def test_version_tag():
+    version = pd.__version__
+    try:
+        version > LooseVersion("0.0.1")
+    except TypeError:
+        raise ValueError(
+            "No git tags exist, please sync tags between upstream and your repo"
+        )

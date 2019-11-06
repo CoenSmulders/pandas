@@ -4,7 +4,7 @@
 from datetime import datetime
 from distutils.version import LooseVersion
 from functools import partial
-import operator as op
+import operator
 
 import numpy as np
 
@@ -18,7 +18,7 @@ from pandas.core.computation.scope import _DEFAULT_GLOBALS
 
 from pandas.io.formats.printing import pprint_thing, pprint_thing_encoded
 
-_reductions = "sum", "prod"
+_reductions = ("sum", "prod")
 
 _unary_math_ops = (
     "sin",
@@ -51,8 +51,9 @@ _LOCAL_TAG = "__pd_eval_local_"
 
 
 class UndefinedVariableError(NameError):
-
-    """NameError subclass for local variables."""
+    """
+    NameError subclass for local variables.
+    """
 
     def __init__(self, name, is_local):
         if is_local:
@@ -191,8 +192,8 @@ _bool_op_map = {"not": "~", "and": "&", "or": "|"}
 
 
 class Op:
-
-    """Hold an operator of arbitrary arity
+    """
+    Hold an operator of arbitrary arity.
     """
 
     def __init__(self, op, operands, *args, **kwargs):
@@ -204,8 +205,9 @@ class Op:
         return iter(self.operands)
 
     def __repr__(self):
-        """Print a generic n-ary operator and its operands using infix
-        notation"""
+        """
+        Print a generic n-ary operator and its operands using infix notation.
+        """
         # recurse over the operands
         parened = ("({0})".format(pprint_thing(opr)) for opr in self.operands)
         return pprint_thing(" {0} ".format(self.op).join(parened))
@@ -271,20 +273,37 @@ def _not_in(x, y):
         return x not in y
 
 
-_cmp_ops_syms = ">", "<", ">=", "<=", "==", "!=", "in", "not in"
-_cmp_ops_funcs = op.gt, op.lt, op.ge, op.le, op.eq, op.ne, _in, _not_in
+_cmp_ops_syms = (">", "<", ">=", "<=", "==", "!=", "in", "not in")
+_cmp_ops_funcs = (
+    operator.gt,
+    operator.lt,
+    operator.ge,
+    operator.le,
+    operator.eq,
+    operator.ne,
+    _in,
+    _not_in,
+)
 _cmp_ops_dict = dict(zip(_cmp_ops_syms, _cmp_ops_funcs))
 
-_bool_ops_syms = "&", "|", "and", "or"
-_bool_ops_funcs = op.and_, op.or_, op.and_, op.or_
+_bool_ops_syms = ("&", "|", "and", "or")
+_bool_ops_funcs = (operator.and_, operator.or_, operator.and_, operator.or_)
 _bool_ops_dict = dict(zip(_bool_ops_syms, _bool_ops_funcs))
 
-_arith_ops_syms = "+", "-", "*", "/", "**", "//", "%"
-_arith_ops_funcs = (op.add, op.sub, op.mul, op.truediv, op.pow, op.floordiv, op.mod)
+_arith_ops_syms = ("+", "-", "*", "/", "**", "//", "%")
+_arith_ops_funcs = (
+    operator.add,
+    operator.sub,
+    operator.mul,
+    operator.truediv,
+    operator.pow,
+    operator.floordiv,
+    operator.mod,
+)
 _arith_ops_dict = dict(zip(_arith_ops_syms, _arith_ops_funcs))
 
-_special_case_arith_ops_syms = "**", "//", "%"
-_special_case_arith_ops_funcs = op.pow, op.floordiv, op.mod
+_special_case_arith_ops_syms = ("**", "//", "%")
+_special_case_arith_ops_funcs = (operator.pow, operator.floordiv, operator.mod)
 _special_case_arith_ops_dict = dict(
     zip(_special_case_arith_ops_syms, _special_case_arith_ops_funcs)
 )
@@ -296,7 +315,8 @@ for d in (_cmp_ops_dict, _bool_ops_dict, _arith_ops_dict):
 
 
 def _cast_inplace(terms, acceptable_dtypes, dtype):
-    """Cast an expression inplace.
+    """
+    Cast an expression inplace.
 
     Parameters
     ----------
@@ -304,7 +324,6 @@ def _cast_inplace(terms, acceptable_dtypes, dtype):
         The expression that should cast.
     acceptable_dtypes : list of acceptable numpy.dtype
         Will not cast if term's dtype in this list.
-
     dtype : str or numpy.dtype
         The dtype to cast to.
     """
@@ -325,8 +344,8 @@ def is_term(obj):
 
 
 class BinOp(Op):
-
-    """Hold a binary operator and its operands
+    """
+    Hold a binary operator and its operands.
 
     Parameters
     ----------
@@ -355,7 +374,8 @@ class BinOp(Op):
             )
 
     def __call__(self, env):
-        """Recursively evaluate an expression in Python space.
+        """
+        Recursively evaluate an expression in Python space.
 
         Parameters
         ----------
@@ -368,7 +388,7 @@ class BinOp(Op):
         """
         # handle truediv
         if self.op == "/" and env.scope["truediv"]:
-            self.func = op.truediv
+            self.func = operator.truediv
 
         # recurse over the left/right nodes
         left = self.lhs(env)
@@ -377,7 +397,8 @@ class BinOp(Op):
         return self.func(left, right)
 
     def evaluate(self, env, engine, parser, term_type, eval_in_python):
-        """Evaluate a binary operation *before* being passed to the engine.
+        """
+        Evaluate a binary operation *before* being passed to the engine.
 
         Parameters
         ----------
@@ -472,8 +493,8 @@ def isnumeric(dtype):
 
 
 class Div(BinOp):
-
-    """Div operator to special case casting.
+    """
+    Div operator to special case casting.
 
     Parameters
     ----------
@@ -498,14 +519,14 @@ class Div(BinOp):
         _cast_inplace(com.flatten(self), acceptable_dtypes, np.float_)
 
 
-_unary_ops_syms = "+", "-", "~", "not"
-_unary_ops_funcs = op.pos, op.neg, op.invert, op.invert
+_unary_ops_syms = ("+", "-", "~", "not")
+_unary_ops_funcs = (operator.pos, operator.neg, operator.invert, operator.invert)
 _unary_ops_dict = dict(zip(_unary_ops_syms, _unary_ops_funcs))
 
 
 class UnaryOp(Op):
-
-    """Hold a unary operator and its operands
+    """
+    Hold a unary operator and its operands.
 
     Parameters
     ----------

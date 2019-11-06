@@ -4,7 +4,7 @@ Base and utility classes for pandas objects.
 import builtins
 from collections import OrderedDict
 import textwrap
-from typing import Dict, Optional
+from typing import Dict, FrozenSet, Optional
 import warnings
 
 import numpy as np
@@ -16,6 +16,7 @@ from pandas.errors import AbstractMethodError
 from pandas.util._decorators import Appender, Substitution, cache_readonly
 from pandas.util._validators import validate_bool_kwarg
 
+from pandas.core.dtypes.cast import is_nested_object
 from pandas.core.dtypes.common import (
     is_categorical_dtype,
     is_datetime64_ns_dtype,
@@ -47,7 +48,6 @@ _indexops_doc_kwargs = dict(
 
 
 class PandasObject(DirNamesMixin):
-
     """baseclass for various pandas objects"""
 
     @property
@@ -267,7 +267,7 @@ class SelectionMixin:
 
     agg = aggregate
 
-    def _try_aggregate_string_function(self, arg, *args, **kwargs):
+    def _try_aggregate_string_function(self, arg: str, *args, **kwargs):
         """
         if arg is a string, then try to operate on it:
         - try to find a function (or attribute) on ourselves
@@ -292,11 +292,9 @@ class SelectionMixin:
 
         f = getattr(np, arg, None)
         if f is not None:
-            try:
+            if hasattr(self, "__array__"):
+                # in particular exclude Window
                 return f(self, *args, **kwargs)
-
-            except (AttributeError, TypeError):
-                pass
 
         raise AttributeError(
             "'{arg}' is not a valid function for "
@@ -567,32 +565,40 @@ class SelectionMixin:
         # degenerate case
         if obj.ndim == 1:
             for a in arg:
+                colg = self._gotitem(obj.name, ndim=1, subset=obj)
                 try:
-                    colg = self._gotitem(obj.name, ndim=1, subset=obj)
-                    results.append(colg.aggregate(a))
+                    new_res = colg.aggregate(a)
+
+                except (TypeError, DataError):
+                    pass
+                else:
+                    results.append(new_res)
 
                     # make sure we find a good name
                     name = com.get_callable_name(a) or a
                     keys.append(name)
-                except (TypeError, DataError):
-                    pass
-                except SpecificationError:
-                    raise
 
         # multiples
         else:
             for index, col in enumerate(obj):
+                colg = self._gotitem(col, ndim=1, subset=obj.iloc[:, index])
                 try:
-                    colg = self._gotitem(col, ndim=1, subset=obj.iloc[:, index])
-                    results.append(colg.aggregate(arg))
-                    keys.append(col)
+                    new_res = colg.aggregate(arg)
                 except (TypeError, DataError):
                     pass
-                except ValueError:
+                except ValueError as err:
                     # cannot aggregate
-                    continue
-                except SpecificationError:
-                    raise
+                    if "Must produce aggregated value" in str(err):
+                        # raised directly in _aggregate_named
+                        pass
+                    elif "no results" in str(err):
+                        # raised direcly in _aggregate_multiple_funcs
+                        pass
+                    else:
+                        raise
+                else:
+                    results.append(new_res)
+                    keys.append(col)
 
         # if we are empty
         if not len(results):
@@ -605,7 +611,6 @@ class SelectionMixin:
             # we are concatting non-NDFrame objects,
             # e.g. a list of scalars
 
-            from pandas.core.dtypes.cast import is_nested_object
             from pandas import Series
 
             result = Series(results, index=keys, name=self.name)
@@ -649,6 +654,17 @@ class IndexOpsMixin:
 
     # ndarray compatibility
     __array_priority__ = 1000
+    _deprecations = frozenset(
+        [
+            "tolist",  # tolist is not deprecated, just suppressed in the __dir__
+            "base",
+            "data",
+            "item",
+            "itemsize",
+            "flags",
+            "strides",
+        ]
+    )  # type: FrozenSet[str]
 
     def transpose(self, *args, **kwargs):
         """
@@ -679,8 +695,10 @@ class IndexOpsMixin:
 
         See Also
         --------
-        DataFrame._is_homogeneous_type
-        MultiIndex._is_homogeneous_type
+        DataFrame._is_homogeneous_type : Whether all the columns in a
+            DataFrame have the same dtype.
+        MultiIndex._is_homogeneous_type : Whether all the levels of a
+            MultiIndex have the same dtype.
         """
         return True
 
@@ -899,7 +917,7 @@ class IndexOpsMixin:
         Parameters
         ----------
         dtype : str or numpy.dtype, optional
-            The dtype to pass to :meth:`numpy.asarray`
+            The dtype to pass to :meth:`numpy.asarray`.
         copy : bool, default False
             Whether to ensure that the returned value is a not a view on
             another array. Note that ``copy=False`` does not *ensure* that
@@ -1055,7 +1073,7 @@ class IndexOpsMixin:
         Parameters
         ----------
         axis : {None}
-            Dummy argument for consistency with Series
+            Dummy argument for consistency with Series.
         skipna : bool, default True
 
         Returns
@@ -1078,7 +1096,7 @@ class IndexOpsMixin:
         Parameters
         ----------
         axis : {None}
-            Dummy argument for consistency with Series
+            Dummy argument for consistency with Series.
         skipna : bool, default True
 
         Returns
@@ -1119,7 +1137,7 @@ class IndexOpsMixin:
         Parameters
         ----------
         axis : {None}
-            Dummy argument for consistency with Series
+            Dummy argument for consistency with Series.
         skipna : bool, default True
 
         Returns
@@ -1290,17 +1308,17 @@ class IndexOpsMixin:
 
         Parameters
         ----------
-        normalize : boolean, default False
+        normalize : bool, default False
             If True then the object returned will contain the relative
             frequencies of the unique values.
-        sort : boolean, default True
+        sort : bool, default True
             Sort by frequencies.
-        ascending : boolean, default False
+        ascending : bool, default False
             Sort in ascending order.
-        bins : integer, optional
+        bins : int, optional
             Rather than count values, group them into half-open bins,
             a convenience for ``pd.cut``, only works with numeric data.
-        dropna : boolean, default True
+        dropna : bool, default True
             Don't include counts of NaN.
 
         Returns
@@ -1462,13 +1480,13 @@ class IndexOpsMixin:
 
     def memory_usage(self, deep=False):
         """
-        Memory usage of the values
+        Memory usage of the values.
 
         Parameters
         ----------
         deep : bool
             Introspect the data deeply, interrogate
-            `object` dtypes for system-level memory consumption
+            `object` dtypes for system-level memory consumption.
 
         Returns
         -------
@@ -1497,7 +1515,7 @@ class IndexOpsMixin:
         size_hint="",
         sort=textwrap.dedent(
             """\
-            sort : boolean, default False
+            sort : bool, default False
                 Sort `uniques` and shuffle `labels` to maintain the
                 relationship.
             """
@@ -1515,6 +1533,12 @@ class IndexOpsMixin:
         Find the indices into a sorted %(klass)s `self` such that, if the
         corresponding elements in `value` were inserted before the indices,
         the order of `self` would be preserved.
+
+        .. note::
+
+            The %(klass)s *must* be monotonically sorted, otherwise
+            wrong locations will likely be returned. Pandas does *not*
+            check this for you.
 
         Parameters
         ----------
@@ -1541,6 +1565,7 @@ class IndexOpsMixin:
 
         See Also
         --------
+        sort_values
         numpy.searchsorted
 
         Notes
@@ -1579,6 +1604,13 @@ class IndexOpsMixin:
 
         >>> x.searchsorted(['bread'], side='right')
         array([3])
+
+        If the values are not monotonically sorted, wrong locations
+        may be returned:
+
+        >>> x = pd.Series([2, 1, 3])
+        >>> x.searchsorted(1)
+        0  # wrong result, correct would be 1
         """
 
     @Substitution(klass="Index")

@@ -432,7 +432,7 @@ class BlockManager(PandasObject):
                 b_items = self.items[b.mgr_locs.indexer]
 
                 for k, obj in aligned_args.items():
-                    axis = getattr(obj, "_info_axis_number", 0)
+                    axis = obj._info_axis_number
                     kwargs[k] = obj.reindex(b_items, axis=axis, copy=align_copy)
 
             applied = getattr(b, f)(**kwargs)
@@ -1079,9 +1079,7 @@ class BlockManager(PandasObject):
         unfit_mgr_locs = []
         unfit_val_locs = []
         removed_blknos = []
-        for blkno, val_locs in libinternals.get_blkno_placements(
-            blknos, self.nblocks, group=True
-        ):
+        for blkno, val_locs in libinternals.get_blkno_placements(blknos, group=True):
             blk = self.blocks[blkno]
             blk_locs = blklocs[val_locs.indexer]
             if blk.should_store(value):
@@ -1278,7 +1276,6 @@ class BlockManager(PandasObject):
         Returns
         -------
         new_blocks : list of Block
-
         """
 
         allow_fill = fill_tuple is not None
@@ -1323,9 +1320,7 @@ class BlockManager(PandasObject):
         # FIXME: mgr_groupby_blknos must return mgr_locs in ascending order,
         # pytables serialization will break otherwise.
         blocks = []
-        for blkno, mgr_locs in libinternals.get_blkno_placements(
-            blknos, self.nblocks, group=True
-        ):
+        for blkno, mgr_locs in libinternals.get_blkno_placements(blknos, group=True):
             if blkno == -1:
                 # If we've got here, fill_tuple was not None.
                 fill_value = fill_tuple[0]
@@ -1581,10 +1576,6 @@ class SingleBlockManager(BlockManager):
 
     def internal_values(self):
         return self._block.internal_values()
-
-    def formatting_values(self):
-        """Return the internal values used by the DataFrame/SeriesFormatter"""
-        return self._block.formatting_values()
 
     def get_values(self):
         """ return a dense type view """
@@ -2039,7 +2030,7 @@ def concatenate_block_managers(mgrs_indexers, axes, concat_axis, copy):
             values = b.values
             if copy:
                 values = values.copy()
-            elif not copy:
+            else:
                 values = values.view()
             b = b.make_block_same_class(values, placement=placement)
         elif is_uniform_join_units(join_units):
